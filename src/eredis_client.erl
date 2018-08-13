@@ -25,7 +25,7 @@
 -include("eredis.hrl").
 
 %% API
--export([start_link/6, stop/1, select_database/2]).
+-export([start_link/9, stop/1, select_database/2]).
 
 -export([do_sync_command/2]).
 
@@ -40,6 +40,9 @@
           database :: binary() | undefined,
           reconnect_sleep :: reconnect_sleep() | undefined,
           connect_timeout :: integer() | undefined,
+          send_timeout :: integer() | undefined,
+          close_on_send_timeout :: boolean(),
+          max_queue_length :: integer() | infinity,
 
           socket :: port() | undefined,
           parser_state :: #pstate{} | undefined,
@@ -55,11 +58,16 @@
                  Database::integer() | undefined,
                  Password::string(),
                  ReconnectSleep::reconnect_sleep(),
-                 ConnectTimeout::integer() | undefined) ->
+                 ConnectTimeout::integer() | undefined,
+                 SendTimeout::integer() | undefined,
+                 CloseOnSendTimeout::boolean(),
+                 MaxQueueLength::integer() | infinity) ->
                         {ok, Pid::pid()} | {error, Reason::term()}.
-start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout) ->
+start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, CloseOnSendTimeout, MaxQueueLength) ->
     gen_server:start_link(?MODULE, [Host, Port, Database, Password,
-                                    ReconnectSleep, ConnectTimeout], []).
+                                    ReconnectSleep, ConnectTimeout,
+                                    SendTimeout, CloseOnSendTimeout,
+                                    MaxQueueLength], []).
 
 
 stop(Pid) ->
@@ -69,13 +77,16 @@ stop(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([Host, Port, Database, Password, ReconnectSleep, ConnectTimeout]) ->
+init([Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, CloseOnSendTimeout, MaxQueueLength]) ->
     State = #state{host = Host,
                    port = Port,
                    database = read_database(Database),
                    password = list_to_binary(Password),
                    reconnect_sleep = ReconnectSleep,
                    connect_timeout = ConnectTimeout,
+                   send_timeout = SendTimeout,
+                   close_on_send_timeout = CloseOnSendTimeout,
+                   max_queue_length = MaxQueueLength,
 
                    parser_state = eredis_parser:init(),
                    queue = queue:new()},
@@ -197,13 +208,7 @@ do_request(_Req, _From, #state{socket = undefined} = State) ->
     {reply, {error, no_connection}, State};
 
 do_request(Req, From, State) ->
-    case gen_tcp:send(State#state.socket, Req) of
-        ok ->
-            NewQueue = queue:in({1, From}, State#state.queue),
-            {noreply, State#state{queue = NewQueue}};
-        {error, Reason} ->
-            {reply, {error, Reason}, State}
-    end.
+    enqueue_request(Req, {1, From}, State).
 
 -spec do_pipeline(Pipeline::pipeline(), From::pid(), #state{}) ->
                          {noreply, #state{}} | {reply, Reply::any(), #state{}}.
@@ -213,12 +218,22 @@ do_pipeline(_Pipeline, _From, #state{socket = undefined} = State) ->
     {reply, {error, no_connection}, State};
 
 do_pipeline(Pipeline, From, State) ->
-    case gen_tcp:send(State#state.socket, Pipeline) of
-        ok ->
-            NewQueue = queue:in({length(Pipeline), From, []}, State#state.queue),
-            {noreply, State#state{queue = NewQueue}};
-        {error, Reason} ->
-            {reply, {error, Reason}, State}
+    enqueue_request(Pipeline, {length(Pipeline), From, []}, State).
+
+enqueue_request(Request, QueueItem, State) ->
+    case {queue:len(State#state.queue), State#state.max_queue_length} of
+        {QL, MQL} when is_integer(MQL) andalso QL >= MQL ->
+            ErrOverflow = {error, queue_overflow},
+            reply_all(ErrOverflow, State#state.queue),
+            {stop, queue_overflow, ErrOverflow, State};
+        _ ->
+            case gen_tcp:send(State#state.socket, Request) of
+                ok ->
+                    NewQueue = queue:in(QueueItem, State#state.queue),
+                    {noreply, State#state{queue = NewQueue}};
+                {error, Reason} ->
+                    {reply, {error, Reason}, State}
+            end
     end.
 
 -spec handle_response(Data::binary(), State::#state{}) -> NewState::#state{}.
@@ -306,8 +321,13 @@ safe_send(Pid, Value) ->
 %% {SomeError, Reason}.
 connect(State) ->
     {ok, {AFamily, Addr}} = get_addr(State#state.host),
+    SocketOpts = [AFamily | ?DEFAULT_SOCKET_OPTS],
+    SocketOpts2 = case {State#state.send_timeout, State#state.close_on_send_timeout} of
+        {undefined, _} -> SocketOpts;
+        {Timeout, Close} -> [{send_timeout, Timeout}, {send_timeout_close, Close} | SocketOpts]
+    end,
     case gen_tcp:connect(Addr, State#state.port,
-                         [AFamily | ?SOCKET_OPTS], State#state.connect_timeout) of
+                         SocketOpts2, State#state.connect_timeout) of
         {ok, Socket} ->
             case authenticate(Socket, State#state.password) of
                 ok ->
@@ -358,7 +378,7 @@ do_sync_command(Socket, Command) ->
     case gen_tcp:send(Socket, Command) of
         ok ->
             %% Hope there's nothing else coming down on the socket..
-            case gen_tcp:recv(Socket, 0, ?RECV_TIMEOUT) of
+            case gen_tcp:recv(Socket, 0, ?DEFAULT_RECV_TIMEOUT) of
                 {ok, <<"+OK\r\n">>} ->
                     ok = inet:setopts(Socket, [{active, once}]),
                     ok;

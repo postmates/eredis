@@ -14,8 +14,8 @@
 -define(TIMEOUT, 5000).
 
 -export([start_link/0, start_link/1, start_link/2, start_link/3, start_link/4,
-         start_link/5, start_link/6, stop/1, q/2, q/3, qp/2, qp/3, q_noreply/2,
-         q_async/2, q_async/3]).
+         start_link/5, start_link/6, start_link/7, start_link/8, start_link/9,
+         stop/1, q/2, q/3, qp/2, qp/3, q_noreply/2, q_async/2, q_async/3]).
 
 %% Exported for testing
 -export([create_multibulk/1]).
@@ -46,27 +46,44 @@ start_link(Host, Port, Database, Password) ->
 start_link(Host, Port, Database, Password, ReconnectSleep) ->
     start_link(Host, Port, Database, Password, ReconnectSleep, ?TIMEOUT).
 
-start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout)
+start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout) ->
+    start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, ?DEFAULT_SEND_TIMEOUT).
+
+start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout) ->
+    start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, ?DEFAULT_CLOSE_ON_SEND_TIMEOUT).
+
+start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, CloseOnSendTimeout) ->
+    start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, CloseOnSendTimeout, ?DEFAULT_MAX_QUEUE_LENGTH).
+
+start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, CloseOnSendTimeout, MaxQueueLength)
   when is_list(Host),
        is_integer(Port),
        is_integer(Database) orelse Database == undefined,
        is_list(Password),
        is_integer(ReconnectSleep) orelse ReconnectSleep =:= no_reconnect,
-       is_integer(ConnectTimeout) ->
+       is_integer(ConnectTimeout),
+       is_integer(SendTimeout) orelse SendTimeout =:= undefined,
+       is_boolean(CloseOnSendTimeout),
+       is_integer(MaxQueueLength) orelse MaxQueueLength =:= infinity ->
 
     eredis_client:start_link(Host, Port, Database, Password,
-                             ReconnectSleep, ConnectTimeout).
+                             ReconnectSleep, ConnectTimeout,
+                             SendTimeout, CloseOnSendTimeout,
+                             MaxQueueLength).
 
 %% @doc: Callback for starting from poolboy
 -spec start_link(server_args()) -> {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Args) ->
-    Host           = proplists:get_value(host, Args, "127.0.0.1"),
-    Port           = proplists:get_value(port, Args, 6379),
-    Database       = proplists:get_value(database, Args, 0),
-    Password       = proplists:get_value(password, Args, ""),
-    ReconnectSleep = proplists:get_value(reconnect_sleep, Args, 100),
-    ConnectTimeout = proplists:get_value(connect_timeout, Args, ?TIMEOUT),
-    start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout).
+    Host               = proplists:get_value(host, Args, "127.0.0.1"),
+    Port               = proplists:get_value(port, Args, 6379),
+    Database           = proplists:get_value(database, Args, 0),
+    Password           = proplists:get_value(password, Args, ""),
+    ReconnectSleep     = proplists:get_value(reconnect_sleep, Args, 100),
+    ConnectTimeout     = proplists:get_value(connect_timeout, Args, ?TIMEOUT),
+    SendTimeout        = proplists:get_value(send_timeout, Args, ?DEFAULT_SEND_TIMEOUT),
+    CloseOnSendTimeout = proplists:get_value(close_on_send_timeout, Args, ?DEFAULT_CLOSE_ON_SEND_TIMEOUT),
+    MaxQueueLength     = proplists:get_value(max_queue_length, Args, ?DEFAULT_MAX_QUEUE_LENGTH),
+    start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendTimeout, CloseOnSendTimeout, MaxQueueLength).
 
 stop(Client) ->
     eredis_client:stop(Client).
