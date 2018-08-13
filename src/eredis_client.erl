@@ -320,14 +320,12 @@ safe_send(Pid, Value) ->
 %% returns something we don't expect, we crash. Returns {ok, State} or
 %% {SomeError, Reason}.
 connect(State) ->
-    {ok, {AFamily, Addr}} = get_addr(State#state.host),
-    SocketOpts = [AFamily | ?DEFAULT_SOCKET_OPTS],
-    SocketOpts2 = case {State#state.send_timeout, State#state.close_on_send_timeout} of
-        {undefined, _} -> SocketOpts;
-        {Timeout, Close} -> [{send_timeout, Timeout}, {send_timeout_close, Close} | SocketOpts]
+    SocketOpts = case {State#state.send_timeout, State#state.close_on_send_timeout} of
+        {undefined, _} -> ?DEFAULT_SOCKET_OPTS;
+        {Timeout, Close} -> [{send_timeout, Timeout}, {send_timeout_close, Close} | ?DEFAULT_SOCKET_OPTS]
     end,
-    case gen_tcp:connect(Addr, State#state.port,
-                         SocketOpts2, State#state.connect_timeout) of
+    case gen_tcp:connect(State#state.host, State#state.port,
+                         SocketOpts, State#state.connect_timeout) of
         {ok, Socket} ->
             case authenticate(Socket, State#state.password) of
                 ok ->
@@ -342,21 +340,6 @@ connect(State) ->
             end;
         {error, Reason} ->
             {error, {connection_error, Reason}}
-    end.
-
-get_addr(Hostname) ->
-    case inet:parse_address(Hostname) of
-        {ok, {_,_,_,_} = Addr} ->         {ok, {inet, Addr}};
-        {ok, {_,_,_,_,_,_,_,_} = Addr} -> {ok, {inet6, Addr}};
-        {error, einval} ->
-            case inet:getaddr(Hostname, inet6) of
-                 {error, _} ->
-                     case inet:getaddr(Hostname, inet) of
-                         {ok, Addr}-> {ok, {inet, Addr}};
-                         {error, _} = Res -> Res
-                     end;
-                 {ok, Addr} -> {ok, {inet6, Addr}}
-            end
     end.
 
 select_database(_Socket, undefined) ->
