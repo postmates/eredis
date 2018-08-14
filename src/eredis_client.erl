@@ -25,7 +25,7 @@
 -include("eredis.hrl").
 
 %% API
--export([start_link/9, stop/1, select_database/2]).
+-export([start_link/9, stop/1, select_database/2, status/1]).
 
 -export([do_sync_command/2]).
 
@@ -73,6 +73,10 @@ start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, SendT
 stop(Pid) ->
     gen_server:call(Pid, stop).
 
+status(Pid) ->
+    gen_server:call(Pid, status).
+
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -106,6 +110,11 @@ handle_call({pipeline, Pipeline}, From, State) ->
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
+
+handle_call(status, _From, State) ->
+    QueueLen = queue:len(State#state.queue),
+    Status = [{inflight_requests, QueueLen}],
+    {reply, Status, State};
 
 handle_call(_Request, _From, State) ->
     {reply, unknown_request, State}.

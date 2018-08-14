@@ -15,7 +15,8 @@
 
 -export([start_link/0, start_link/1, start_link/2, start_link/3, start_link/4,
          start_link/5, start_link/6, start_link/7, start_link/8, start_link/9,
-         stop/1, q/2, q/3, qp/2, qp/3, q_noreply/2, q_async/2, q_async/3]).
+         stop/1, q/2, q/3, qp/2, qp/3, q_noreply/2, q_async/2, q_async/3,
+         status/1]).
 
 %% Exported for testing
 -export([create_multibulk/1]).
@@ -131,6 +132,9 @@ q_async(Client, Command) ->
 q_async(Client, Command, Pid) when is_pid(Pid) ->
     Request = {request, create_multibulk(Command), Pid},
     gen_server:cast(Client, Request).
+
+status(Client) ->
+    eredis_client:status(Client).
 
 %%
 %% INTERNAL HELPERS
