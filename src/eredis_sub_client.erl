@@ -76,7 +76,6 @@ handle_call({controlling_process, Pid}, _From, State) ->
 handle_call(get_channels, _From, State) ->
     {reply, {ok, State#state.channels}, State};
 
-
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 
@@ -111,14 +110,11 @@ handle_cast({subscribe, Pid, Channels}, #state{controlling_process = {_, Pid}} =
     NewChannels = add_channels(Channels, State#state.channels),
     {noreply, State#state{channels = NewChannels}};
 
-
 handle_cast({psubscribe, Pid, Channels}, #state{controlling_process = {_, Pid}} = State) ->
     Command = eredis:create_multibulk(["PSUBSCRIBE" | Channels]),
     ok = gen_tcp:send(State#state.socket, Command),
     NewChannels = add_channels(Channels, State#state.channels),
     {noreply, State#state{channels = NewChannels}};
-
-
 
 handle_cast({unsubscribe, Pid, Channels}, #state{controlling_process = {_, Pid}} = State) ->
     Command = eredis:create_multibulk(["UNSUBSCRIBE" | Channels]),
@@ -126,22 +122,22 @@ handle_cast({unsubscribe, Pid, Channels}, #state{controlling_process = {_, Pid}}
     NewChannels = remove_channels(Channels, State#state.channels),
     {noreply, State#state{channels = NewChannels}};
 
-
-
 handle_cast({punsubscribe, Pid, Channels}, #state{controlling_process = {_, Pid}} = State) ->
     Command = eredis:create_multibulk(["PUNSUBSCRIBE" | Channels]),
     ok = gen_tcp:send(State#state.socket, Command),
     NewChannels = remove_channels(Channels, State#state.channels),
     {noreply, State#state{channels = NewChannels}};
 
-
+handle_cast({ping, Pid, Marker}, #state{controlling_process = {_, Pid}} = State) ->
+    Command = eredis:create_multibulk(["PING", Marker]),
+    ok = gen_tcp:send(State#state.socket, Command),
+    {noreply, State};
 
 handle_cast({ack_message, _}, State) ->
     {noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
-
 
 %% Receive data from socket, see handle_response/2
 handle_info({tcp, _Socket, Bs}, State) ->
@@ -200,7 +196,6 @@ handle_info({connection_ready, Socket}, #state{socket = undefined} = State) ->
     send_to_controller({eredis_connected, self()}, State),
     ok = inet:setopts(Socket, [{active, once}]),
     {noreply, State#state{socket = Socket}};
-
 
 %% Our controlling process is down.
 handle_info({'DOWN', Ref, process, Pid, _Reason},
@@ -291,6 +286,10 @@ reply({ok, [<<"unsubscribe">>, Channel, _]}, State) ->
 
 reply({ok, [<<"punsubscribe">>, Channel, _]}, State) ->
     queue_or_send({unsubscribed, Channel, self()}, State);
+
+reply({ok, [<<"pong">>, Marker]}, State) ->
+    queue_or_send({pong, Marker, self()}, State);
+
 reply({ReturnCode, Value}, State) ->
     throw({unexpected_response_from_redis, ReturnCode, Value, State}).
 

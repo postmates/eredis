@@ -14,6 +14,8 @@
 
 -export([psubscribe/2,punsubscribe/2]).
 
+-export([ping/2]).
+
 -export([receiver/1, sub_example/0, pub_example/0]).
 
 -export([psub_example/0,ppub_example/0]).
@@ -141,6 +143,12 @@ punsubscribe(Client, Channels) ->
 channels(Client) ->
     gen_server:call(Client, get_channels).
 
+%% Send a ping with the marker to the pubsub connection.
+%% The client is expected to send back a {pong, Marker :: binary(), pid()}
+%% message to the controlling process as a reply.
+-spec ping(pid(), binary()) -> ok.
+ping(Client, Marker) ->
+    gen_server:cast(Client, {ping, self(), Marker}).
 
 
 %%
