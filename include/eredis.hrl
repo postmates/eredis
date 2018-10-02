@@ -33,7 +33,7 @@
 
 -define(NL, "\r\n").
 
--define(DEFAULT_SOCKET_OPTS, [binary, {active, once}, {packet, raw}, {reuseaddr, false}]).
+-define(DEFAULT_SOCKET_OPTS, [binary, {active, once}, {packet, raw}, {reuseaddr, false}, {nodelay, true}]).
 -define(DEFAULT_RECV_TIMEOUT, 5000).
 -define(DEFAULT_SEND_TIMEOUT, 5000).
 -define(DEFAULT_CLOSE_ON_SEND_TIMEOUT, false).
