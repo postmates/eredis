@@ -45,7 +45,7 @@ start_link(Host, Port, Database, Password) ->
     start_link(Host, Port, Database, Password, 100).
 
 start_link(Host, Port, Database, Password, ReconnectSleep) ->
-    start_link(Host, Port, Database, Password, ReconnectSleep, ?TIMEOUT).
+    start_link(Host, Port, Database, Password, ReconnectSleep, ?DEFAULT_CONNECT_TIMEOUT).
 
 start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout) ->
     start_link(Host, Port, Database, Password, ReconnectSleep, ConnectTimeout, ?DEFAULT_SEND_TIMEOUT).
@@ -80,7 +80,7 @@ start_link(Args) ->
     Database           = proplists:get_value(database, Args, 0),
     Password           = proplists:get_value(password, Args, ""),
     ReconnectSleep     = proplists:get_value(reconnect_sleep, Args, 100),
-    ConnectTimeout     = proplists:get_value(connect_timeout, Args, ?TIMEOUT),
+    ConnectTimeout     = proplists:get_value(connect_timeout, Args, ?DEFAULT_CONNECT_TIMEOUT),
     SendTimeout        = proplists:get_value(send_timeout, Args, ?DEFAULT_SEND_TIMEOUT),
     CloseOnSendTimeout = proplists:get_value(close_on_send_timeout, Args, ?DEFAULT_CLOSE_ON_SEND_TIMEOUT),
     MaxQueueLength     = proplists:get_value(max_queue_length, Args, ?DEFAULT_MAX_QUEUE_LENGTH),

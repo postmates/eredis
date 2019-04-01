@@ -14,7 +14,7 @@
 
 
 %% API
--export([start_link/6, stop/1]).
+-export([start_link/7, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,10 +29,11 @@
                  Password::string(),
                  ReconnectSleep::reconnect_sleep(),
                  MaxQueueSize::integer() | infinity,
-                 QueueBehaviour::drop | exit) ->
+                 QueueBehaviour::drop | exit,
+                 ConnectTimeout::integer()) ->
                         {ok, Pid::pid()} | {error, Reason::term()}.
-start_link(Host, Port, Password, ReconnectSleep, MaxQueueSize, QueueBehaviour) ->
-    Args = [Host, Port, Password, ReconnectSleep, MaxQueueSize, QueueBehaviour],
+start_link(Host, Port, Password, ReconnectSleep, MaxQueueSize, QueueBehaviour, ConnectTimeout) ->
+    Args = [Host, Port, Password, ReconnectSleep, MaxQueueSize, QueueBehaviour, ConnectTimeout],
     gen_server:start_link(?MODULE, Args, []).
 
 
@@ -43,10 +44,11 @@ stop(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([Host, Port, Password, ReconnectSleep, MaxQueueSize, QueueBehaviour]) ->
+init([Host, Port, Password, ReconnectSleep, MaxQueueSize, QueueBehaviour, ConnectTimeout]) ->
     State = #state{host            = Host,
                    port            = Port,
                    password        = list_to_binary(Password),
+                   connect_timeout = ConnectTimeout,
                    reconnect_sleep = ReconnectSleep,
                    channels        = [],
                    parser_state    = eredis_parser:init(),
@@ -309,7 +311,7 @@ queue_or_send(Msg, State) ->
 %% synchronous and if Redis returns something we don't expect, we
 %% crash. Returns {ok, State} or {error, Reason}.
 connect(State) ->
-    case gen_tcp:connect(State#state.host, State#state.port, ?DEFAULT_SOCKET_OPTS) of
+    case gen_tcp:connect(State#state.host, State#state.port, ?DEFAULT_SOCKET_OPTS, State#state.connect_timeout) of
         {ok, Socket} ->
             case authenticate(Socket, State#state.password) of
                 ok ->
